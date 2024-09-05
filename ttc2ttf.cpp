@@ -273,7 +273,7 @@ TTC2TTF_RET ttc2ttf_main(int argc, _TCHAR **wargv)
     return ret;
 }
 
-#ifndef TTC2TTF_NO_EXE
+#ifndef TTC2TTF_NO_MAIN
 
 extern "C"
 int _tmain(int argc, _TCHAR **wargv)
@@ -292,4 +292,4 @@ int main(void)
 }
 #endif
 
-#endif // ndef TTC2TTF_NO_EXE
+#endif // ndef TTC2TTF_NO_MAIN
