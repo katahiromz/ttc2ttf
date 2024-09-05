@@ -35,13 +35,23 @@ void ttc2ttf_usage(void)
 extern "C"
 void ttc2ttf_version(void)
 {
-    _tprintf(_T("ttc2ttf Version 0.6 by katahiromz\n"));
+    _tprintf(_T("ttc2ttf Version 0.7 by katahiromz\n"));
     _tprintf(_T("License: MIT\n"));
 }
 
 static inline uint32_t u32_ceil4(uint32_t n)
 {
     return (n + 3) & ~3;
+}
+
+static inline int is_big_endian(void)
+{
+    union
+    {
+        unsigned int i;
+        char c[4];
+    } test_union = { 0x01020304 };
+    return test_union.c[0] == 1;
 }
 
 static inline uint32_t u32_swab(uint32_t value)
@@ -58,6 +68,20 @@ static inline uint16_t u16_swab(uint16_t value)
     uint16_t new_value = (value >> 8);
     new_value |= (value & 0xFF) << 8;
     return new_value;
+}
+
+static inline uint32_t u32_endian_fix(uint32_t value)
+{
+    if (is_big_endian())
+        return value;
+    return u32_swab(value);
+}
+
+static inline uint16_t u16_endian_fix(uint16_t value)
+{
+    if (is_big_endian())
+        return value;
+    return u16_swab(value);
 }
 
 static bool read_all(const tstring& filename, std::vector<char>& content)
@@ -97,14 +121,14 @@ ttc2ttf_extract(const _TCHAR *out_filename, const std::vector<char>& content, ui
     _tprintf(_T("Extract TTF #%d to %s\n"), index, out_filename);
     _tprintf(_T("\tHeader offset %d\n"), ttf_offset);
 
-    uint16_t table_count = u16_swab(*reinterpret_cast<const uint16_t*>(&content.at(ttf_offset + 4)));
+    uint16_t table_count = u16_endian_fix(*reinterpret_cast<const uint16_t*>(&content.at(ttf_offset + 4)));
     uint32_t header_length = 12 + table_count * 16;
     _tprintf(_T("\tHeader size %d bytes\n"), header_length);
 
     uint32_t table_length = 0;
     for (uint32_t j = 0; j < table_count; ++j)
     {
-        uint32_t length = u32_swab(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 12 + j * 16)));
+        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 12 + j * 16)));
         table_length += u32_ceil4(length);
     }
 
@@ -115,9 +139,9 @@ ttc2ttf_extract(const _TCHAR *out_filename, const std::vector<char>& content, ui
 
     for (uint32_t j = 0; j < table_count; ++j)
     {
-        uint32_t offset = u32_swab(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 8 + j * 16)));
-        uint32_t length = u32_swab(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 12 + j * 16)));
-        *reinterpret_cast<uint32_t*>(&new_buf.at(12 + 8 + j * 16)) = u32_swab(current_offset);
+        uint32_t offset = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 8 + j * 16)));
+        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 12 + j * 16)));
+        *reinterpret_cast<uint32_t*>(&new_buf.at(12 + 8 + j * 16)) = u32_endian_fix(current_offset);
         std::memcpy(&new_buf.at(current_offset), &content.at(offset), length);
         current_offset += u32_ceil4(length);
     }
@@ -148,7 +172,7 @@ TTC2TTF_RET ttc2ttf_except(const _TCHAR *in_filename, int entry_index, const _TC
         return TTC2TTF_RET_NOT_TTC;
 
     // get the count of fonts
-    uint32_t ttf_count = u32_swab(*reinterpret_cast<uint32_t*>(&content.at(8)));
+    uint32_t ttf_count = u32_endian_fix(*reinterpret_cast<uint32_t*>(&content.at(8)));
     _tprintf(_T("ttf_count: %d\n"), ttf_count);
 
     // get offsets
@@ -156,7 +180,7 @@ TTC2TTF_RET ttc2ttf_except(const _TCHAR *in_filename, int entry_index, const _TC
     std::memcpy(ttf_offset_array.data(), &content.at(12), ttf_count * sizeof(uint32_t));
     for (auto& offset : ttf_offset_array)
     {
-        offset = u32_swab(offset);
+        offset = u32_endian_fix(offset);
     }
 
     if (entry_index == -1)
