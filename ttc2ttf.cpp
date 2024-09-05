@@ -35,7 +35,7 @@ void ttc2ttf_usage(void)
 extern "C"
 void ttc2ttf_version(void)
 {
-    _tprintf(_T("ttc2ttf Version 0.5 by katahiromz\n"));
+    _tprintf(_T("ttc2ttf Version 0.6 by katahiromz\n"));
     _tprintf(_T("License: MIT\n"));
 }
 
@@ -145,12 +145,7 @@ TTC2TTF_RET ttc2ttf_except(const _TCHAR *in_filename, int entry_index, const _TC
 
     // not a TTC file?
     if (content.size() >= 4 && std::memcmp(content.data(), "ttcf", 4) != 0)
-    {
-        filename += _T(".ttf");
-        if (!write_all(filename.c_str(), content.data(), content.size()))
-            return TTC2TTF_RET_WRITE_ERROR;
         return TTC2TTF_RET_NOT_TTC;
-    }
 
     // get the count of fonts
     uint32_t ttf_count = u32_swab(*reinterpret_cast<uint32_t*>(&content.at(8)));
@@ -249,30 +244,29 @@ TTC2TTF_RET ttc2ttf_main(int argc, _TCHAR **wargv)
     case TTC2TTF_RET_NO_ERROR:
         break;
     case TTC2TTF_RET_NOT_TTC:
-        _ftprintf(stderr, "Warning: Not a TTC file\n");
-        ret = TTC2TTF_RET_NO_ERROR;
+        _ftprintf(stderr, "Error: Not a TTC file\n");
         break;
     case TTC2TTF_RET_INVALID_ARGUMENTS:
-        _ftprintf(stderr, _T("Invalid arguments\n"));
+        _ftprintf(stderr, _T("Error: Invalid arguments\n"));
         ttc2ttf_usage();
         break;
     case TTC2TTF_RET_READ_ERROR:
-        _ftprintf(stderr, _T("Error in reading file: %s\n"), in_filename);
+        _ftprintf(stderr, _T("Error: Unable to read file: %s\n"), in_filename);
         break;
     case TTC2TTF_RET_WRITE_ERROR:
-        _ftprintf(stderr, _T("Error in writing file: %s\n"), out_filename);
+        _ftprintf(stderr, _T("Error: Unable to write file: %s\n"), out_filename);
         break;
     case TTC2TTF_RET_INVALID_FORMAT:
-        _ftprintf(stderr, _T("Invalid file format: %s\n"), in_filename);
+        _ftprintf(stderr, _T("Error: Invalid file format: %s\n"), in_filename);
         break;
     case TTC2TTF_RET_OUT_OF_MEMORY:
-        _ftprintf(stderr, _T("Out of memory\n"));
+        _ftprintf(stderr, _T("Error: Out of memory\n"));
         break;
     case TTC2TTF_RET_BAD_FONT_INDEX:
-        _ftprintf(stderr, _T("The specified font index was out of range\n"));
+        _ftprintf(stderr, _T("Error: The specified font index was out of range\n"));
         break;
     case TTC2TTF_RET_LOGIC_ERROR:
-        _ftprintf(stderr, _T("Logical error\n"));
+        _ftprintf(stderr, _T("Error: Logical error\n"));
         break;
     }
 
