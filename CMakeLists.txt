@@ -36,3 +36,7 @@ endif()
 
 # ttc2ttf.exe
 add_executable(ttc2ttf ttc2ttf.cpp)
+
+# libttc2ttf.a
+add_library(libttc2ttf STATIC ttc2ttf.cpp)
+set_target_properties(libttc2ttf PROPERTIES PREFIX "")
