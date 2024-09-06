@@ -67,6 +67,13 @@ static inline uint16_t u16_endian_fix(uint16_t value)
     return u16_swab(value);
 }
 
+template <typename T_TYPE>
+static inline uint32_t u32_get(const T_TYPE& input, size_t offset)
+{
+    input.at(offset + sizeof(uint32_t) - 1);
+    return u32_endian_fix(*reinterpret_cast<const uint32_t *>(&input.at(offset)));
+}
+
 bool file_read_all(const tstring& filename, std::vector<char>& content)
 {
     struct _stat st;
@@ -110,7 +117,7 @@ void ttc2ttf_extract(std::vector<char>& output, const std::vector<char>& input, 
     uint32_t table_length = 0;
     for (uint32_t j = 0; j < table_count; ++j)
     {
-        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(ttf_offset + 12 + 12 + j * 16)));
+        uint32_t length = u32_get(input, ttf_offset + 12 + 12 + j * 16);
         table_length += u32_ceil4(length);
     }
 
@@ -121,8 +128,8 @@ void ttc2ttf_extract(std::vector<char>& output, const std::vector<char>& input, 
 
     for (uint32_t j = 0; j < table_count; ++j)
     {
-        uint32_t offset = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(ttf_offset + 12 + 8 + j * 16)));
-        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(ttf_offset + 12 + 12 + j * 16)));
+        uint32_t offset = u32_get(input, ttf_offset + 12 + 8 + j * 16);
+        uint32_t length = u32_get(input, ttf_offset + 12 + 12 + j * 16);
         *reinterpret_cast<uint32_t*>(&output.at(12 + 8 + j * 16)) = u32_endian_fix(current_offset);
         std::memcpy(&output.at(current_offset), &input.at(offset), length);
         current_offset += u32_ceil4(length);
@@ -151,8 +158,7 @@ TTC2TTF_RET ttc2ttf_data_from_data(std::vector<char>& output, const std::vector<
         return TTC2TTF_RET_BAD_FONT_INDEX;
 
     // get offsets
-    uint32_t ttf_offset =
-        u32_endian_fix(*reinterpret_cast<const uint32_t *>(&input.at(12 + font_index * sizeof(uint32_t))));
+    uint32_t ttf_offset = u32_get(input, 12 + font_index * sizeof(uint32_t));
 
     // extract specific ttf
     ttc2ttf_extract(output, input, ttf_offset, font_index);
