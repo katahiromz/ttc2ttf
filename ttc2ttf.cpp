@@ -88,6 +88,15 @@ static inline void u32_set(T_OUTPUT& output, size_t offset, uint32_t value)
     *reinterpret_cast<uint32_t *>(&output.at(offset)) = u32_endian_fix(value);
 }
 
+template <typename T_OUTPUT, typename T_INPUT>
+static inline void
+memory_copy(T_OUTPUT& output, size_t offset0, const T_INPUT& input, size_t offset1, size_t size)
+{
+    output.at(offset0 + size - 1);
+    input.at(offset1 + size - 1);
+    std::memcpy(&output.at(offset0), &input.at(offset1), size);
+}
+
 bool file_read_all(const tstring& filename, std::vector<char>& content)
 {
     struct _stat st;
@@ -137,7 +146,7 @@ void ttc2ttf_extract(std::vector<char>& output, const std::vector<char>& input, 
 
     uint32_t total_length = header_length + table_length;
     output.resize(total_length);
-    std::memcpy(output.data(), &input.at(ttf_offset), header_length);
+    memory_copy(output, 0, input, ttf_offset, header_length);
     uint32_t current_offset = header_length;
 
     for (uint32_t j = 0; j < table_count; ++j)
@@ -145,7 +154,7 @@ void ttc2ttf_extract(std::vector<char>& output, const std::vector<char>& input, 
         uint32_t offset = u32_get(input, ttf_offset + 12 + 8 + j * 16);
         uint32_t length = u32_get(input, ttf_offset + 12 + 12 + j * 16);
         u32_set(output, 12 + 8 + j * 16, current_offset);
-        std::memcpy(&output.at(current_offset), &input.at(offset), length);
+        memory_copy(output, current_offset, input, offset, length);
         current_offset += u32_ceil4(length);
     }
 }
