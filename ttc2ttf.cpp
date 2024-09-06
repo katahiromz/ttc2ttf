@@ -3,39 +3,22 @@
 #include <cstdlib>
 #include <cstdint>
 #include <cstring>
+#include <cassert>
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include "ttc2ttf.h"
 
-#ifdef UNICODE
-    typedef std::wstring tstring;
-
-    template <typename T_VALUE>
-    inline tstring to_tstring(const T_VALUE& value)
-    {
-        return std::to_wstring(value);
-    }
-#else
-    typedef std::string tstring;
-
-    template <typename T_VALUE>
-    inline tstring to_tstring(const T_VALUE& value)
-    {
-        return std::to_string(value);
-    }
-#endif
-
-extern "C"
 void ttc2ttf_usage(void)
 {
     _tprintf(_T("Usage: ttc2ttf input.ttc [font_index output.ttf]\n"));
 }
 
-extern "C"
 void ttc2ttf_version(void)
 {
-    _tprintf(_T("ttc2ttf Version 0.7 by katahiromz\n"));
+    _tprintf(_T("ttc2ttf Version 0.8 by katahiromz\n"));
     _tprintf(_T("License: MIT\n"));
 }
 
@@ -84,27 +67,27 @@ static inline uint16_t u16_endian_fix(uint16_t value)
     return u16_swab(value);
 }
 
-static bool read_all(const tstring& filename, std::vector<char>& content)
+bool file_read_all(const tstring& filename, std::vector<char>& content)
 {
+    struct _stat st;
+    size_t size = 0;
+    if (!_tstat(filename.c_str(), &st))
+        size = st.st_size;
+
     FILE *fin = _tfopen(filename.c_str(), _T("rb"));
     if (!fin)
         return false;
 
-    static char s_buf[1024 * 16];
-    for (;;)
-    {
-        size_t length = fread(s_buf, 1, _countof(s_buf), fin);
-        if (!length)
-            break;
-
-        content.insert(content.end(), &s_buf[0], &s_buf[length]);
-    }
+    bool ret = true;
+    content.resize(size);
+    if (size)
+        ret = fread(content.data(), size, 1, fin);
 
     fclose(fin);
-    return true;
+    return ret;
 }
 
-static bool write_all(const tstring& filename, const void *ptr, size_t size)
+bool file_write_all(const tstring& filename, const void *ptr, size_t size)
 {
     FILE *fout = _tfopen(filename.c_str(), _T("wb"));
     if (!fout)
@@ -115,105 +98,83 @@ static bool write_all(const tstring& filename, const void *ptr, size_t size)
     return !!written;
 }
 
-static bool
-ttc2ttf_extract(const _TCHAR *out_filename, const std::vector<char>& content, uint32_t ttf_offset, int index)
+void ttc2ttf_extract(std::vector<char>& output, const std::vector<char>& input, uint32_t ttf_offset, int index)
 {
-    _tprintf(_T("Extract TTF #%d to %s\n"), index, out_filename);
+    _tprintf(_T("Extract TTF #%d\n"), index);
     _tprintf(_T("\tHeader offset %d\n"), ttf_offset);
 
-    uint16_t table_count = u16_endian_fix(*reinterpret_cast<const uint16_t*>(&content.at(ttf_offset + 4)));
+    uint16_t table_count = u16_endian_fix(*reinterpret_cast<const uint16_t*>(&input.at(ttf_offset + 4)));
     uint32_t header_length = 12 + table_count * 16;
     _tprintf(_T("\tHeader size %d bytes\n"), header_length);
 
     uint32_t table_length = 0;
     for (uint32_t j = 0; j < table_count; ++j)
     {
-        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 12 + j * 16)));
+        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(ttf_offset + 12 + 12 + j * 16)));
         table_length += u32_ceil4(length);
     }
 
     uint32_t total_length = header_length + table_length;
-    std::vector<char> new_buf(total_length);
-    std::memcpy(new_buf.data(), &content.at(ttf_offset), header_length);
+    output.resize(total_length);
+    std::memcpy(output.data(), &input.at(ttf_offset), header_length);
     uint32_t current_offset = header_length;
 
     for (uint32_t j = 0; j < table_count; ++j)
     {
-        uint32_t offset = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 8 + j * 16)));
-        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&content.at(ttf_offset + 12 + 12 + j * 16)));
-        *reinterpret_cast<uint32_t*>(&new_buf.at(12 + 8 + j * 16)) = u32_endian_fix(current_offset);
-        std::memcpy(&new_buf.at(current_offset), &content.at(offset), length);
+        uint32_t offset = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(ttf_offset + 12 + 8 + j * 16)));
+        uint32_t length = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(ttf_offset + 12 + 12 + j * 16)));
+        *reinterpret_cast<uint32_t*>(&output.at(12 + 8 + j * 16)) = u32_endian_fix(current_offset);
+        std::memcpy(&output.at(current_offset), &input.at(offset), length);
         current_offset += u32_ceil4(length);
     }
-
-    return write_all(out_filename, new_buf.data(), new_buf.size());
 }
 
-extern "C"
-TTC2TTF_RET ttc2ttf_except(const _TCHAR *in_filename, int entry_index, const _TCHAR *out_filename)
+int ttc2ttf_get_ttf_count(const std::vector<char>& input)
 {
-    if (entry_index < 0 && entry_index != -1)
-        return TTC2TTF_RET_INVALID_ARGUMENTS;
-    if (entry_index == -1 && out_filename)
-        return TTC2TTF_RET_INVALID_ARGUMENTS;
-
-    // read all
-    std::vector<char> content;
-    if (!read_all(in_filename, content))
-        return TTC2TTF_RET_READ_ERROR;
-
-    // Remove filename extension
-    tstring filename = in_filename;
-    if (filename.find(".ttc") == filename.size() - 4)
-        filename.erase(filename.size() - 4, 4);
-
     // not a TTC file?
-    if (content.size() >= 4 && std::memcmp(content.data(), "ttcf", 4) != 0)
-        return TTC2TTF_RET_NOT_TTC;
+    if (input.size() >= 4 && std::memcmp(input.data(), "ttcf", 4) != 0)
+        return -1;
 
     // get the count of fonts
-    uint32_t ttf_count = u32_endian_fix(*reinterpret_cast<uint32_t*>(&content.at(8)));
-    _tprintf(_T("ttf_count: %d\n"), ttf_count);
+    uint32_t ttf_count = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(8)));
+    return (int)ttf_count;
+}
+
+TTC2TTF_RET ttc2ttf_data_from_data(std::vector<char>& output, const std::vector<char>& input, int font_index)
+{
+    // not a TTC file?
+    int ttf_count = ttc2ttf_get_ttf_count(input);
+    if (ttf_count < 0)
+        return TTC2TTF_RET_NOT_TTC;
+
+    // Bad font_index?
+    if (!(0 <= font_index && font_index < ttf_count))
+        return TTC2TTF_RET_BAD_FONT_INDEX;
 
     // get offsets
     std::vector<uint32_t> ttf_offset_array(ttf_count);
-    std::memcpy(ttf_offset_array.data(), &content.at(12), ttf_count * sizeof(uint32_t));
+    std::memcpy(ttf_offset_array.data(), &input.at(12), ttf_count * sizeof(uint32_t));
     for (auto& offset : ttf_offset_array)
     {
         offset = u32_endian_fix(offset);
     }
 
-    if (entry_index == -1)
-    {
-        // extract each ttf
-        for (uint32_t font_index = 0; font_index < ttf_count; ++font_index)
-        {
-            tstring output_filename = filename + to_tstring(font_index) + _T(".ttf");
-            if (!ttc2ttf_extract(output_filename.c_str(), content, ttf_offset_array.at(font_index), font_index))
-                return TTC2TTF_RET_WRITE_ERROR;
-        }
-    }
-    else
-    {
-        if (entry_index >= ttf_count)
-            return TTC2TTF_RET_BAD_FONT_INDEX;
-
-        // extract specific ttf
-        uint32_t font_index = entry_index;
-        if (!ttc2ttf_extract(out_filename, content, ttf_offset_array.at(font_index), font_index))
-            return TTC2TTF_RET_WRITE_ERROR;
-    }
+    // extract specific ttf
+    ttc2ttf_extract(output, input, ttf_offset_array.at(font_index), font_index);
 
     // done
     return TTC2TTF_RET_NO_ERROR;
 }
 
-extern "C"
-TTC2TTF_RET ttc2ttf_noexcept(const _TCHAR *in_filename, int font_index, const _TCHAR *out_filename)
+TTC2TTF_RET ttc2ttf_data_from_file(std::vector<char>& output, const _TCHAR *in_filename, int font_index)
 {
     try
     {
-        return ttc2ttf_except(in_filename, font_index, out_filename);
+        std::vector<char> input;
+        if (!file_read_all(in_filename, input))
+            return TTC2TTF_RET_READ_ERROR;
+
+        return ttc2ttf_data_from_data(output, input, font_index);
     }
     catch (const std::out_of_range& e)
     {
@@ -229,7 +190,61 @@ TTC2TTF_RET ttc2ttf_noexcept(const _TCHAR *in_filename, int font_index, const _T
     }
 }
 
-extern "C"
+TTC2TTF_RET ttc2ttf_file_from_file(const _TCHAR *out_filename, const _TCHAR *in_filename, int font_index)
+{
+    try
+    {
+        std::vector<char> input;
+        if (!file_read_all(in_filename, input))
+            return TTC2TTF_RET_READ_ERROR;
+
+        if (font_index == -1)
+        {
+            assert(!out_filename);
+
+            int ttf_count = ttc2ttf_get_ttf_count(input);
+            if (ttf_count < 0)
+                return TTC2TTF_RET_NOT_TTC;
+
+            for (font_index = 0; font_index < ttf_count; ++font_index)
+            {
+                std::vector<char> output;
+                TTC2TTF_RET ret = ttc2ttf_data_from_data(output, input, font_index);
+                if (ret != TTC2TTF_RET_NO_ERROR)
+                    return ret;
+
+                auto out_name = tstring(_T("font")) + to_tstring(font_index) + _T(".ttf");
+                if (!file_write_all(out_name.c_str(), output.data(), output.size()))
+                    return TTC2TTF_RET_WRITE_ERROR;
+            }
+        }
+        else
+        {
+            std::vector<char> output;
+            TTC2TTF_RET ret = ttc2ttf_data_from_data(output, input, font_index);
+            if (ret != TTC2TTF_RET_NO_ERROR)
+                return ret;
+
+            if (!file_write_all(out_filename, output.data(), output.size()))
+                return TTC2TTF_RET_WRITE_ERROR;
+        }
+
+        return TTC2TTF_RET_NO_ERROR;
+    }
+    catch (const std::out_of_range& e)
+    {
+        return TTC2TTF_RET_INVALID_FORMAT;
+    }
+    catch (const std::bad_alloc& e)
+    {
+        return TTC2TTF_RET_OUT_OF_MEMORY;
+    }
+    catch (const std::logic_error& e)
+    {
+        return TTC2TTF_RET_LOGIC_ERROR;
+    }
+}
+
 TTC2TTF_RET ttc2ttf_main(int argc, _TCHAR **wargv)
 {
     TTC2TTF_RET ret;
@@ -262,7 +277,7 @@ TTC2TTF_RET ttc2ttf_main(int argc, _TCHAR **wargv)
         return TTC2TTF_RET_INVALID_ARGUMENTS;
     }
 
-    ret = ttc2ttf_noexcept(in_filename, font_index, out_filename);
+    ret = ttc2ttf_file_from_file(out_filename, in_filename, font_index);
     switch (ret)
     {
     case TTC2TTF_RET_NO_ERROR:
@@ -278,7 +293,10 @@ TTC2TTF_RET ttc2ttf_main(int argc, _TCHAR **wargv)
         _ftprintf(stderr, _T("Error: Unable to read file: %s\n"), in_filename);
         break;
     case TTC2TTF_RET_WRITE_ERROR:
-        _ftprintf(stderr, _T("Error: Unable to write file: %s\n"), out_filename);
+        if (out_filename)
+            _ftprintf(stderr, _T("Error: Unable to write file: %s\n"), out_filename);
+        else
+            _ftprintf(stderr, _T("Error: Unable to write file\n"));
         break;
     case TTC2TTF_RET_INVALID_FORMAT:
         _ftprintf(stderr, _T("Error: Invalid file format: %s\n"), in_filename);

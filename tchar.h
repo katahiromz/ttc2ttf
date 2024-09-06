@@ -10,5 +10,6 @@
     #define _ftprintf fprintf
     #define _tfopen fopen
     #define _tcscmp strcmp
+    #define _tstat _stat
     #define _tmain main
 #endif

@@ -12,6 +12,24 @@
 
 #include "tchar.h"
 
+#ifdef UNICODE
+    typedef std::wstring tstring;
+
+    template <typename T_VALUE>
+    inline tstring to_tstring(const T_VALUE& value)
+    {
+        return std::to_wstring(value);
+    }
+#else
+    typedef std::string tstring;
+
+    template <typename T_VALUE>
+    inline tstring to_tstring(const T_VALUE& value)
+    {
+        return std::to_string(value);
+    }
+#endif
+
 typedef enum TTC2TTF_RET
 {
     TTC2TTF_RET_NO_ERROR = 0,
@@ -25,17 +43,13 @@ typedef enum TTC2TTF_RET
     TTC2TTF_RET_LOGIC_ERROR,
 } TTC2TTF_RET;
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+bool file_read_all(const tstring& filename, std::vector<char>& content);
+bool file_write_all(const tstring& filename, const void *ptr, size_t size);
 
 void ttc2ttf_usage(void);
 void ttc2ttf_version(void);
-
-TTC2TTF_RET ttc2ttf_except(const _TCHAR *in_filename, int font_index, const _TCHAR *out_filename);
-TTC2TTF_RET ttc2ttf_noexcept(const _TCHAR *in_filename, int font_index, const _TCHAR *out_filename);
+int ttc2ttf_get_ttf_count(const std::vector<char>& input);
+TTC2TTF_RET ttc2ttf_data_from_data(std::vector<char>& output, const std::vector<char>& input, int font_index);
+TTC2TTF_RET ttc2ttf_data_from_file(std::vector<char>& output, const _TCHAR *in_filename, int font_index);
+TTC2TTF_RET ttc2ttf_file_from_file(const _TCHAR *out_filename, const _TCHAR *in_filename, int font_index);
 TTC2TTF_RET ttc2ttf_main(int argc, _TCHAR **wargv);
-
-#ifdef __cplusplus
-} // extern "C"
-#endif
