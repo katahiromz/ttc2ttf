@@ -151,15 +151,11 @@ TTC2TTF_RET ttc2ttf_data_from_data(std::vector<char>& output, const std::vector<
         return TTC2TTF_RET_BAD_FONT_INDEX;
 
     // get offsets
-    std::vector<uint32_t> ttf_offset_array(ttf_count);
-    std::memcpy(ttf_offset_array.data(), &input.at(12), ttf_count * sizeof(uint32_t));
-    for (auto& offset : ttf_offset_array)
-    {
-        offset = u32_endian_fix(offset);
-    }
+    uint32_t ttf_offset =
+        u32_endian_fix(*reinterpret_cast<const uint32_t *>(&input.at(12 + font_index * sizeof(uint32_t))));
 
     // extract specific ttf
-    ttc2ttf_extract(output, input, ttf_offset_array.at(font_index), font_index);
+    ttc2ttf_extract(output, input, ttf_offset, font_index);
 
     // done
     return TTC2TTF_RET_NO_ERROR;
