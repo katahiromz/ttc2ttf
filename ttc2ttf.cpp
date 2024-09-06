@@ -18,7 +18,7 @@ void ttc2ttf_usage(void)
 
 void ttc2ttf_version(void)
 {
-    _tprintf(_T("ttc2ttf Version 0.8 by katahiromz\n"));
+    _tprintf(_T("ttc2ttf Version 0.9 by katahiromz\n"));
     _tprintf(_T("License: MIT\n"));
 }
 
@@ -132,12 +132,11 @@ void ttc2ttf_extract(std::vector<char>& output, const std::vector<char>& input, 
 int ttc2ttf_get_ttf_count(const std::vector<char>& input)
 {
     // not a TTC file?
-    if (input.size() >= 4 && std::memcmp(input.data(), "ttcf", 4) != 0)
+    if (input.size() < 4 || std::memcmp(input.data(), "ttcf", 4) != 0)
         return -1;
 
     // get the count of fonts
-    uint32_t ttf_count = u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(8)));
-    return (int)ttf_count;
+    return (int)u32_endian_fix(*reinterpret_cast<const uint32_t*>(&input.at(8)));
 }
 
 TTC2TTF_RET ttc2ttf_data_from_data(std::vector<char>& output, const std::vector<char>& input, int font_index)
